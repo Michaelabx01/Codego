@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "305604235464",
+    "project_id": "codego-project",
+    "storage_bucket": "codego-project.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:305604235464:android:674d5856cfa074aa9f15fd",
+        "android_client_info": {
+          "package_name": "com.example.code_projectv1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBO5Q1VDM3co8aKzt9o4rSRKyhjrpgRzSE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
