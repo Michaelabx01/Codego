@@ -20,12 +20,13 @@ class _HomePageState extends State<HomePage> {
     _loadUsername(); // Cargar el nombre de usuario almacenado en SharedPreferences
   }
 
-  Future<void> _loadUsername() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _username = prefs.getString('username') ?? 'Iniciar sesión';
-    });
-  }
+Future<void> _loadUsername() async {
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  setState(() {
+    _username = prefs.getString('username') ?? 'Iniciar sesión';
+  });
+}
+
 
   @override
   Widget build(BuildContext context) {

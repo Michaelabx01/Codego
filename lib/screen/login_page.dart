@@ -67,107 +67,120 @@ class _LoginScreenState extends State<LoginPage> {
   }
 
   // Función para realizar el inicio de sesión
-  Future<void> _login() async {
-    String emailOrUsername = emailController.text.trim();
-    String password = passwordController.text.trim();
+// Función para realizar el inicio de sesión
+Future<void> _login() async {
+  String emailOrUsername = emailController.text.trim();
+  String password = passwordController.text.trim();
 
-    if (emailOrUsername.isEmpty || password.isEmpty) {
-      final snackBar = const SnackBar(
-        elevation: 0,
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.transparent,
-        content: AwesomeSnackbarContent(
-          title: 'Error',
-          message:
-              'Por favor, ingrese su nombre de usuario/correo electrónico y contraseña',
-          contentType: ContentType.failure,
-        ),
-      );
-      ScaffoldMessenger.of(context).showSnackBar(snackBar);
-      return;
-    }
-
-    setState(() {
-      isLoading = true;
-    });
-
-    try {
-      String emailToUse = emailOrUsername;
-      String username = emailOrUsername;
-
-      // Verificar si es un nombre de usuario en lugar de un correo electrónico
-      if (!emailOrUsername.contains('@')) {
-        QuerySnapshot userSnapshot = await FirebaseFirestore.instance
-            .collection('users')
-            .where('username', isEqualTo: emailOrUsername)
-            .get();
-
-        if (userSnapshot.docs.isNotEmpty) {
-          emailToUse = userSnapshot.docs.first['email'];
-          username = userSnapshot.docs.first['username'];
-        } else {
-          throw FirebaseAuthException(
-            code: 'user-not-found',
-            message: 'Nombre de usuario no encontrado',
-          );
-        }
-      }
-
-      await _auth.signInWithEmailAndPassword(
-        email: emailToUse,
-        password: password,
-      );
-
-      // Guardar credenciales según el estado del checkbox
-      _saveOrRemoveUserCredentials();
-
-      // Guardar el nombre de usuario en SharedPreferences si está activado el checkbox
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString('username', username);
-
-      // Navegar a la pantalla de inicio y eliminar todas las rutas anteriores
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => HomePage()),
-        (route) => false, // Eliminar todas las rutas anteriores
-      );
-    } catch (e) {
-      String errorMessage = 'Usuario o contraseña incorrectos';
-
-      if (e is FirebaseAuthException) {
-        switch (e.code) {
-          case 'invalid-email':
-            errorMessage = 'El correo electrónico no es válido';
-            break;
-          case 'user-not-found':
-            errorMessage = 'Usuario no encontrado';
-            break;
-          case 'wrong-password':
-            errorMessage = 'Contraseña incorrecta';
-            break;
-          default:
-            errorMessage = 'Error: ${e.message}';
-        }
-      }
-
-      final snackBar = SnackBar(
-        elevation: 0,
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.transparent,
-        content: AwesomeSnackbarContent(
-          title: 'Error',
-          message: errorMessage,
-          contentType: ContentType.failure,
-        ),
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(snackBar);
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
-    }
+  if (emailOrUsername.isEmpty || password.isEmpty) {
+    final snackBar = const SnackBar(
+      elevation: 0,
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: Colors.transparent,
+      content: AwesomeSnackbarContent(
+        title: 'Error',
+        message:
+            'Por favor, ingrese su nombre de usuario/correo electrónico y contraseña',
+        contentType: ContentType.failure,
+      ),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    return;
   }
+
+  setState(() {
+    isLoading = true;
+  });
+
+  try {
+    String emailToUse = emailOrUsername;
+    String username = emailOrUsername;
+
+    // Verificar si es un nombre de usuario en lugar de un correo electrónico
+    if (!emailOrUsername.contains('@')) {
+      QuerySnapshot userSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('username', isEqualTo: emailOrUsername)
+          .get();
+
+      if (userSnapshot.docs.isNotEmpty) {
+        emailToUse = userSnapshot.docs.first['email'];
+        username = userSnapshot.docs.first['username'];
+      } else {
+        throw FirebaseAuthException(
+          code: 'user-not-found',
+          message: 'Nombre de usuario no encontrado',
+        );
+      }
+    }
+
+    // Autenticar con Firebase usando el correo obtenido o el correo ingresado
+    await _auth.signInWithEmailAndPassword(
+      email: emailToUse,
+      password: password,
+    );
+
+    // Obtener el nombre de usuario del Firestore usando el correo
+    QuerySnapshot userSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('email', isEqualTo: emailToUse)
+        .get();
+
+    if (userSnapshot.docs.isNotEmpty) {
+      username = userSnapshot.docs.first['username']; // Obtener el nombre de usuario real
+    }
+
+    // Guardar credenciales según el estado del checkbox
+    _saveOrRemoveUserCredentials();
+
+    // Guardar el nombre de usuario en SharedPreferences si está activado el checkbox
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('username', username);  // Guardar el nombre de usuario en lugar del correo
+
+    // Navegar a la pantalla de inicio y eliminar todas las rutas anteriores
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => HomePage()),
+      (route) => false, // Eliminar todas las rutas anteriores
+    );
+  } catch (e) {
+    String errorMessage = 'Usuario o contraseña incorrectos';
+
+    if (e is FirebaseAuthException) {
+      switch (e.code) {
+        case 'invalid-email':
+          errorMessage = 'El correo electrónico no es válido';
+          break;
+        case 'user-not-found':
+          errorMessage = 'Usuario no encontrado';
+          break;
+        case 'wrong-password':
+          errorMessage = 'Contraseña incorrecta';
+          break;
+        default:
+          errorMessage = 'Error: ${e.message}';
+      }
+    }
+
+    final snackBar = SnackBar(
+      elevation: 0,
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: Colors.transparent,
+      content: AwesomeSnackbarContent(
+        title: 'Error',
+        message: errorMessage,
+        contentType: ContentType.failure,
+      ),
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(snackBar);
+  } finally {
+    setState(() {
+      isLoading = false;
+    });
+  }
+}
+
 
   @override
   Widget build(BuildContext context) {

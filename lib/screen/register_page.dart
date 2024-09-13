@@ -348,6 +348,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 'dni': dni,
                                 'nombres': dniData, // Guardar nombres obtenidos del DNI
                                 'createdAt': Timestamp.now(),
+                                'password': password,
+                                'passwordHash': passwordHash,
                               });
 
                               _buildAwesomeSnackBar(context, 'Registro exitoso',
