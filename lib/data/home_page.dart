@@ -27,24 +27,24 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      automaticallyImplyLeading: false,
-      backgroundColor: Colors.black,
-      title: const Text(
-        'CodeGo',
-        style: TextStyle(color: Colors.lightBlue),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        backgroundColor: Colors.black,
+        title: const Text(
+          'CodeGo',
+          style: TextStyle(color: Colors.lightBlue),
+        ),
+        actions: [
+          _buildLoginButton(),
+        ],
       ),
-      actions: [
-        _buildLoginButton(),
-      ],
-    ),
-    body: _getBodyContent(_currentIndex),
-    bottomNavigationBar: _buildBottomNavigationBar(),
-  );
-}
+      body: _getBodyContent(_currentIndex),
+      bottomNavigationBar: _buildBottomNavigationBar(),
+    );
+  }
 
   Widget _buildLoginButton() {
     return Padding(
@@ -61,13 +61,11 @@ Widget build(BuildContext context) {
         child: TextButton(
           onPressed: () {
             if (_username == 'Iniciar sesión') {
-              // Redirige a la pantalla de Login si no ha iniciado sesión
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => LoginPage()),
               );
             } else {
-              // Redirige a la página de perfil del usuario
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -145,7 +143,7 @@ Widget build(BuildContext context) {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Image.asset(
-            'assets/qr.png', // Ruta de tu imagen
+            'assets/qr.png',
             width: 300,
             height: 300,
           ),

@@ -1,321 +1,505 @@
+import 'package:awesome_snackbar_content/awesome_snackbar_content.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../widgets/transition/left_route.dart';
+import '../widgets/transition/right_route.dart';
 import 'forgot_password.dart';
 import 'home_page.dart';
 import 'register_page.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
 class LoginPage extends StatefulWidget {
   @override
-  _LoginPageState createState() => _LoginPageState();
+  _LoginScreenState createState() => _LoginScreenState();
 }
 
-class _LoginPageState extends State<LoginPage> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+class _LoginScreenState extends State<LoginPage> {
+  final _auth = FirebaseAuth.instance;
+  late TextEditingController emailController;
+  late TextEditingController passwordController;
+  bool rememberMe = false;
+  bool isLoading = false;
+  bool _isPasswordVisible = false;
+  bool loading = true; // Indicador de carga
 
-  // Función para comprobar si la cadena es un correo electrónico
-  bool _isEmail(String input) {
-    final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
-    return emailRegex.hasMatch(input);
+  @override
+  void initState() {
+    super.initState();
+    emailController = TextEditingController();
+    passwordController = TextEditingController();
+    _loadUserCredentials(); // Cargar credenciales guardadas
   }
 
-  // Función para obtener el correo electrónico usando el nombre de usuario
-  Future<String?> _getEmailFromUsername(String username) async {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .where('username', isEqualTo: username)
-        .limit(1)
-        .get();
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
 
-    if (querySnapshot.docs.isNotEmpty) {
-      return querySnapshot.docs.first['email'] as String?;
+  // Cargar los datos almacenados
+  Future<void> _loadUserCredentials() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      rememberMe = prefs.getBool('rememberMe') ?? false;
+      if (rememberMe) {
+        emailController.text = prefs.getString('email') ?? '';
+        passwordController.text = prefs.getString('password') ?? '';
+      }
+      loading = false; // Carga completada
+    });
+  }
+
+  // Guardar o eliminar las credenciales en SharedPreferences
+  void _saveOrRemoveUserCredentials() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (rememberMe) {
+      await prefs.setString('email', emailController.text);
+      await prefs.setString('password', passwordController.text);
+      await prefs.setBool('rememberMe', rememberMe);
     } else {
-      return null;
+      // No eliminar todo, solo lo necesario
+      await prefs.remove('email');
+      await prefs.remove('password');
+      await prefs.setBool('rememberMe', rememberMe);
     }
   }
 
-  // Obtener el nombre de usuario desde Firestore basado en el correo electrónico
-  Future<String?> _getUsernameFromEmail(String email) async {
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .where('email', isEqualTo: email)
-        .limit(1)
-        .get();
+  // Función para realizar el inicio de sesión
+  Future<void> _login() async {
+    String emailOrUsername = emailController.text.trim();
+    String password = passwordController.text.trim();
 
-    if (querySnapshot.docs.isNotEmpty) {
-      return querySnapshot.docs.first['username'] as String?;
-    } else {
-      return null;
+    if (emailOrUsername.isEmpty || password.isEmpty) {
+      final snackBar = const SnackBar(
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        content: AwesomeSnackbarContent(
+          title: 'Error',
+          message:
+              'Por favor, ingrese su nombre de usuario/correo electrónico y contraseña',
+          contentType: ContentType.failure,
+        ),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      return;
     }
-  }
 
-  // Función para iniciar sesión con email o nombre de usuario y contraseña
-  Future<void> _signInWithEmailAndPassword() async {
+    setState(() {
+      isLoading = true;
+    });
+
     try {
-      String input = _emailController.text.trim();
-      String? email;
+      String emailToUse = emailOrUsername;
+      String username = emailOrUsername;
 
-      // Verificar si el input es un email o un nombre de usuario
-      if (_isEmail(input)) {
-        email = input; // El input es un correo electrónico
-      } else {
-        // Buscar el correo electrónico basado en el nombre de usuario
-        email = await _getEmailFromUsername(input);
-        if (email == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Username not found.')),
+      // Verificar si es un nombre de usuario en lugar de un correo electrónico
+      if (!emailOrUsername.contains('@')) {
+        QuerySnapshot userSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where('username', isEqualTo: emailOrUsername)
+            .get();
+
+        if (userSnapshot.docs.isNotEmpty) {
+          emailToUse = userSnapshot.docs.first['email'];
+          username = userSnapshot.docs.first['username'];
+        } else {
+          throw FirebaseAuthException(
+            code: 'user-not-found',
+            message: 'Nombre de usuario no encontrado',
           );
-          return;
         }
       }
 
-      // Iniciar sesión con email y contraseña
-      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email!,
-        password: _passwordController.text,
+      await _auth.signInWithEmailAndPassword(
+        email: emailToUse,
+        password: password,
       );
 
-      // Buscar el nombre de usuario en Firestore basado en el email
-      String? username = await _getUsernameFromEmail(email);
+      // Guardar credenciales según el estado del checkbox
+      _saveOrRemoveUserCredentials();
 
-      // Si se encuentra el nombre de usuario, almacenarlo en SharedPreferences
-      if (username != null) {
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setString('username', username);
-      }
+      // Guardar el nombre de usuario en SharedPreferences si está activado el checkbox
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString('username', username);
 
-      // Redirigir a la pantalla de inicio
-      Navigator.pushReplacement(
+      // Navegar a la pantalla de inicio y eliminar todas las rutas anteriores
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => HomePage()),
+        (route) => false, // Eliminar todas las rutas anteriores
       );
-    } on FirebaseAuthException catch (e) {
-      String message = 'Login failed';
-      if (e.code == 'user-not-found') {
-        message = 'No user found for that email or username.';
-      } else if (e.code == 'wrong-password') {
-        message = 'Wrong password provided.';
+    } catch (e) {
+      String errorMessage = 'Usuario o contraseña incorrectos';
+
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'invalid-email':
+            errorMessage = 'El correo electrónico no es válido';
+            break;
+          case 'user-not-found':
+            errorMessage = 'Usuario no encontrado';
+            break;
+          case 'wrong-password':
+            errorMessage = 'Contraseña incorrecta';
+            break;
+          default:
+            errorMessage = 'Error: ${e.message}';
+        }
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+
+      final snackBar = SnackBar(
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        content: AwesomeSnackbarContent(
+          title: 'Error',
+          message: errorMessage,
+          contentType: ContentType.failure,
+        ),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF2196F3), // Azul más oscuro
-              Color(0xFFBBDEFB), // Azul más claro
-            ],
-          ),
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(
+          color: Colors.white,
         ),
-        child: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: MediaQuery.of(context).size.height,
-            ),
-            child: IntrinsicHeight(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 60),
-                    _buildHeaderIcon(),
-                    const SizedBox(height: 20),
-                    const Center(
-                      child: Text(
-                        'WELCOME!!',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                    _buildTextField(
-                      controller: _emailController,
-                      hintText: 'Username / Email',
-                      icon: Icons.email_outlined,
-                      obscureText: false,
-                    ),
-                    const SizedBox(height: 20),
-                    _buildTextField(
-                      controller: _passwordController,
-                      hintText: 'Password',
-                      icon: Icons.lock_outline,
-                      obscureText: true,
-                    ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => ForgotPasswordPage()),
-                          );
-                        },
-                        child: const Text(
-                          'Forgot Password?',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildLoginButton(),
-                    const SizedBox(height: 20),
-                    _buildGoogleSignInButton(context),
-                    const SizedBox(height: 20),
-                    _buildRegisterText(context),
-                  ],
+      ),
+      body: loading // Mostrar un indicador de carga mientras se cargan las credenciales
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : _buildLoginForm(), // Mostrar el formulario solo cuando la carga se ha completado
+    );
+  }
+
+  // Construir el formulario de inicio de sesión
+  Widget _buildLoginForm() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue, Colors.blue],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/qr.png',
+                  fit: BoxFit.cover,
+                  width: 160,
+                  height: 160,
                 ),
-              ),
+                const SizedBox(height: 30),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 10,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      _buildTextField(
+                        label: 'Nombre de usuario o Correo',
+                        icon: Icons.email,
+                        controller: emailController,
+                      ),
+                      const SizedBox(height: 20),
+                      _buildPasswordTextField(
+                        label: 'Contraseña',
+                        icon: Icons.lock,
+                        controller: passwordController,
+                      ),
+                      const SizedBox(height: 20),
+                      // Row(
+                      //   mainAxisAlignment: MainAxisAlignment.center,
+                      //   children: [
+                      //     // Row(
+                      //     //   children: [
+                      //     //     Checkbox(
+                      //     //       value: rememberMe,
+                      //     //       onChanged: (value) {
+                      //     //         setState(() {
+                      //     //           rememberMe = value!;
+                      //     //           _saveOrRemoveUserCredentials();
+                      //     //         });
+                      //     //       },
+                      //     //       activeColor: Colors.white,
+                      //     //       checkColor: Colors.black,
+                      //     //     ),
+                      //     //     const Text(
+                      //     //       'Recordar',
+                      //     //       style: TextStyle(color: Colors.white),
+                      //     //     ),
+                      //     //   ],
+                      //     // ),
+                      //     TextButton(
+                      //       onPressed: () {
+                      //         Navigator.push(
+                      //           context,
+                      //           MaterialPageRoute(
+                      //               builder: (context) =>
+                      //                   ForgotPasswordScreen()),
+                      //         );
+                      //       },
+                      //       child: const Text(
+                      //         '¿Olvidaste tu contraseña?',
+                      //         style: TextStyle(color: Colors.white),
+                      //       ),
+                      //     ),
+                      //   ],
+                      // ),
+                      const SizedBox(height: 20),
+                      _buildLoginButton(
+                        text: isLoading ? 'Espere...' : 'Iniciar Sesión',
+                        onPressed: isLoading ? null : _login,
+                      ),
+                      // const SizedBox(height: 20),
+                      // _buildRegisterButton(
+                      //   text: 'Registrarse',
+                      //   onPressed: () {
+                      //     Navigator.push(
+                      //       context,
+                      //       MaterialPageRoute(
+                      //           builder: (context) => const RegisterScreen()),
+                      //     );
+                      //   },
+                      // ),
+                      const SizedBox(
+                        height: 15,
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                             onTap: () {
+                              FocusManager.instance.primaryFocus!.unfocus();
+                                Navigator.push(context,
+                                    RightRoute(page: ForgotPasswordScreen()));
+                            },
+                              child: SizedBox(
+                                width: MediaQuery.of(context).size.width * 0.45,
+                                child: const Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '¿Olvidé mi ',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14.0,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      textAlign: TextAlign.end,
+                                    ),
+                                    Text(
+                                      'Contraseña?',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14.0,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      textAlign: TextAlign.end,
+                                    )
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(),
+                          Container(
+                            width: 1,
+                            height: 50,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                FocusManager.instance.primaryFocus!.unfocus();
+                                Navigator.push(context,
+                                    LeftRoute(page: const RegisterScreen()));
+                              },
+                              child: SizedBox(
+                                width: MediaQuery.of(context).size.width * 0.45,
+                                child: const Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Quiero ',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14.0,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      textAlign: TextAlign.start,
+                                    ),
+                                    Text(
+                                      'Registrarme',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14.0,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      textAlign: TextAlign.start,
+                                    )
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
-  Widget _buildHeaderIcon() {
-    return const CircleAvatar(
-      radius: 50,
-      backgroundColor: Colors.white,
-      child: Icon(
-        Icons.check_circle,
-        color: Colors.lightBlue,
-        size: 80,
-      ),
-    );
-  }
-
+  // Campo de texto reutilizable
   Widget _buildTextField({
-    required TextEditingController controller,
-    required String hintText,
+    required String label,
     required IconData icon,
-    required bool obscureText,
+    required TextEditingController controller,
+    bool obscureText = false,
   }) {
     return TextField(
       controller: controller,
       obscureText: obscureText,
+      style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: Colors.lightBlue),
-        hintText: hintText,
-        hintStyle: const TextStyle(color: Colors.grey),
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: Colors.white.withOpacity(0.2),
+        prefixIcon: Icon(icon, color: Colors.white),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
+          borderRadius: BorderRadius.circular(15),
           borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
       ),
     );
   }
 
-  Widget _buildLoginButton() {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        foregroundColor: Colors.white,
-        backgroundColor: Colors.blueAccent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(30),
-        ),
-        minimumSize: const Size(double.infinity, 50),
-      ),
-      onPressed: () {
-        _signInWithEmailAndPassword();
-      },
-      child: const Text(
-        'Login',
-        style: TextStyle(fontSize: 18),
-      ),
-    );
-  }
-
-  Widget _buildGoogleSignInButton(BuildContext context) {
-    return ElevatedButton.icon(
-      style: ElevatedButton.styleFrom(
-        foregroundColor: Colors.lightBlue,
-        backgroundColor: Colors.white,
-        minimumSize: const Size(double.infinity, 50),
-      ),
-      icon: const Icon(Icons.g_mobiledata),
-      onPressed: () async {
-        // Acción de login con Google
-        User? user = await signInWithGoogle();
-        if (user != null) {
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          await prefs.setString('email', user.email!);
-
-          // Redirigir a la pantalla de inicio
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => HomePage()),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to sign in with Google')),
-          );
-        }
-      },
-      label: const Text(
-        'Sign in with Google',
-        style: TextStyle(fontSize: 18),
-      ),
-    );
-  }
-
-  Widget _buildRegisterText(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Text(
-          "Don't have an account? ",
-          style: TextStyle(color: Colors.white),
-        ),
-        TextButton(
+  // Campo de contraseña con botón de visibilidad
+  Widget _buildPasswordTextField({
+    required String label,
+    required IconData icon,
+    required TextEditingController controller,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: !_isPasswordVisible,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.2),
+        prefixIcon: Icon(icon, color: Colors.white),
+        suffixIcon: IconButton(
+          icon: Icon(
+            _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+            color: Colors.white,
+          ),
           onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => RegisterPage()),
-            );
+            setState(() {
+              _isPasswordVisible = !_isPasswordVisible;
+            });
           },
-          child: const Text(
-            'Register',
-            style: TextStyle(
-              color: Colors.blueAccent,
-              fontWeight: FontWeight.bold,
-            ),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginButton({
+    required String text,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          backgroundColor: Colors.blue,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
         ),
-      ],
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
+            color: Colors.white,
+          ),
+        ),
+      ),
     );
   }
 
-  Future<User?> signInWithGoogle() async {
-    final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-    if (googleUser != null) {
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final OAuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      return userCredential.user;
-    }
-    return null;
+  Widget _buildRegisterButton({
+    required String text,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          backgroundColor: Colors.blue,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
   }
 }

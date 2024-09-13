@@ -41,6 +41,8 @@ dependencies:
   google_sign_in: ^6.2.1
   shared_preferences: ^2.3.2
   cloud_firestore: ^5.4.1
+  awesome_snackbar_content: ^0.1.4
+  crypto: ^3.0.5
 
 dev_dependencies:
   flutter_test:

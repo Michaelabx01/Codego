@@ -1,32 +1,36 @@
+import 'package:code_projectv1/data/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'login_page.dart';
+import '../widgets/card_container.dart';
+
 
 class UserProfilePage extends StatelessWidget {
   final String username;
 
   UserProfilePage({required this.username});
 
-  // Función para cerrar sesión
-  Future<void> _signOut(BuildContext context) async {
-    // Limpiar SharedPreferences
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+Future<void> _signOut(BuildContext context) async {
+  // Limpiar SharedPreferences
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  await prefs.clear();
 
-    // Cerrar sesión de Firebase
-    await FirebaseAuth.instance.signOut();
+  // Cerrar sesión de Firebase
+  await FirebaseAuth.instance.signOut();
 
-    // Redirigir al LoginPage
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => LoginPage()),
-      (route) => false, // Eliminar todas las rutas anteriores
-    );
-  }
+  // Redirigir a HomePage y eliminar todas las rutas anteriores
+  Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(builder: (context) => HomePage()),
+    (Route<dynamic> route) => false,
+  );
+}
+
+
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.black,
@@ -42,16 +46,26 @@ class UserProfilePage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Avatar o icono que represente al usuario
-            const CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.lightBlue,
-              child: Icon(
-                Icons.person,
-                color: Colors.white,
-                size: 80,
+            const SizedBox(height: 50),
+            CardContainer(
+              backgroundColor: Colors.white,
+              width: size.width * 0.40,
+              height: size.width * 0.40,
+              child: Center(
+                child: Icon(
+                  Icons.perm_identity,
+                  size: (size.width * 0.32) > 100 ? 100 : 50,
+                ),
               ),
             ),
             const SizedBox(height: 20),
+            const Text(
+              'Username',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
+            ),
 
             // Mostrar el nombre de usuario
             Text(
@@ -62,37 +76,27 @@ class UserProfilePage extends StatelessWidget {
                 color: Colors.black87,
               ),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              'Username',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
-            ),
 
             const SizedBox(height: 40),
 
             // Botón de cerrar sesión
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  _signOut(context);
+                },
+                icon: const Icon(
+                  Icons.exit_to_app_outlined,
+                  size: 18,
+                  color: Colors.black,
                 ),
-                padding:
-                    const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              onPressed: () {
-                _signOut(context);
-              },
-              icon: const Icon(Icons.logout, color: Colors.white),
-              label: const Text(
-                'Sign Out',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.white,
+                label: const Text(
+                  "Cerrar sesión",
+                  style: TextStyle(fontSize: 18, color: Colors.black),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.black),
                 ),
               ),
             ),
