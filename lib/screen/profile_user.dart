@@ -1,42 +1,79 @@
-import 'package:code_projectv1/screen/home_page.dart';
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/card_container.dart';
+import 'home_page.dart';
 
-
-class UserProfilePage extends StatelessWidget {
+class UserProfilePage extends StatefulWidget {
   final String username;
 
   UserProfilePage({required this.username});
 
-Future<void> _signOut(BuildContext context) async {
-  // Limpiar SharedPreferences
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  await prefs.clear();
-
-  // Cerrar sesión de Firebase
-  await FirebaseAuth.instance.signOut();
-
-  // Redirigir a HomePage y eliminar todas las rutas anteriores
-  Navigator.pushAndRemoveUntil(
-    context,
-    MaterialPageRoute(builder: (context) => HomePage()),
-    (Route<dynamic> route) => false,
-  );
+  @override
+  _UserProfilePageState createState() => _UserProfilePageState();
 }
 
+class _UserProfilePageState extends State<UserProfilePage> {
+  String? nombres; // Variable para almacenar los nombres
+  String? apellidoPaterno; // Variable para el apellido paterno
+  String? apellidoMaterno; // Variable para el apellido materno
 
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData(); // Cargar los datos del usuario desde Firestore
+  }
+
+  Future<void> _loadUserData() async {
+    // Obtener el ID del usuario actualmente autenticado
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      // Consultar Firestore para obtener los datos del usuario
+      DocumentSnapshot userSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      // Si los datos existen, acceder correctamente al subcampo 'nombres'
+      if (userSnapshot.exists) {
+        final userData = userSnapshot.data() as Map<String, dynamic>;
+        final nombresData = userData['nombres'] as Map<String, dynamic>;
+
+        setState(() {
+          nombres = nombresData['nombres']; // Nombres del usuario
+          apellidoPaterno = nombresData['apellidoPaterno']; // Apellido paterno
+          apellidoMaterno = nombresData['apellidoMaterno']; // Apellido materno
+        });
+      }
+    }
+  }
+
+  Future<void> _signOut(BuildContext context) async {
+    // Limpiar SharedPreferences
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    // Cerrar sesión de Firebase
+    await FirebaseAuth.instance.signOut();
+
+    // Redirigir a HomePage y eliminar todas las rutas anteriores
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => HomePage()),
+      (Route<dynamic> route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(
-          color: Colors
-              .white, // Cambia el color de la flecha de retroceso a blanco
+          color: Colors.white,
         ),
       ),
       body: Padding(
@@ -45,7 +82,6 @@ Future<void> _signOut(BuildContext context) async {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Avatar o icono que represente al usuario
             const SizedBox(height: 50),
             CardContainer(
               backgroundColor: Colors.white,
@@ -66,15 +102,33 @@ Future<void> _signOut(BuildContext context) async {
                 color: Colors.grey,
               ),
             ),
-
             // Mostrar el nombre de usuario
             Text(
-              username,
+              widget.username,
               style: const TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
                 color: Colors.black87,
               ),
+            ),
+            const SizedBox(height: 20),
+
+            // Mostrar nombres y apellidos si están disponibles
+            const Text(
+              'Nombre Completo',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+              ),
+            ),
+            Text(
+              '${nombres ?? 'Cargando...'} ${apellidoPaterno ?? ''} ${apellidoMaterno ?? ''}', // Mostrar nombres y apellidos
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.center,
             ),
 
             const SizedBox(height: 40),

@@ -1,9 +1,11 @@
-import 'package:awesome_snackbar_content/awesome_snackbar_content.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:convert'; // Necesario para el hash
-import 'package:crypto/crypto.dart'; // Necesario para el hash
+import 'package:crypto/crypto.dart';
+import 'package:awesome_snackbar_content/awesome_snackbar_content.dart';
+
+import '../service/dni_serivce.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -20,30 +22,69 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String password = '';
   String confirmPassword = '';
   String username = '';
+  String dni = ''; // Nueva variable para el DNI
+  Map<String, dynamic>? dniData; // Datos obtenidos por el servicio
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
-  bool _isUsernameValid =
-      true; // Nueva variable para el estado de la validación del nombre de usuario
+  bool _isUsernameValid = true;
+  bool _isLoading = false; // Nueva variable para manejar el estado de carga
 
   // Función para generar el hash de la contraseña
   String hashPassword(String password) {
-    var bytes = utf8.encode(password); // Convierte la contraseña en bytes
-    var hashedPassword =
-        sha256.convert(bytes); // Aplica el algoritmo de hash (SHA-256)
-    return hashedPassword.toString(); // Devuelve el hash como una cadena
+    var bytes = utf8.encode(password);
+    var hashedPassword = sha256.convert(bytes);
+    return hashedPassword.toString();
   }
 
   // Función para validar si el nombre de usuario tiene letras y números
   bool _validateUsername(String username) {
-    final hasLetters =
-        RegExp(r'[a-zA-Z]').hasMatch(username); // Contiene letras
-    final hasNumbers = RegExp(r'[0-9]').hasMatch(username); // Contiene números
+    final hasLetters = RegExp(r'[a-zA-Z]').hasMatch(username);
+    final hasNumbers = RegExp(r'[0-9]').hasMatch(username);
     return hasLetters && hasNumbers;
   }
 
-  // En lugar de usar el Snackbar predeterminado de Flutter, usarás el AwesomeSnackbarContent.
-// Aquí hay un ejemplo de cómo implementar un snackbar usando esa librería.
+  // Verificar si el nombre de usuario o DNI ya existen en Firestore
+  Future<bool> _isUsernameOrDniTaken(String username, String dni) async {
+    // Verificar nombre de usuario
+    final usernameSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('username', isEqualTo: username)
+        .get();
 
+    // Verificar DNI
+    final dniSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('dni', isEqualTo: dni)
+        .get();
+
+    if (usernameSnapshot.docs.isNotEmpty) {
+      _buildAwesomeSnackBar(context, 'El nombre de usuario ya existe', ContentType.warning);
+      return true;
+    }
+
+    if (dniSnapshot.docs.isNotEmpty) {
+      _buildAwesomeSnackBar(context, 'El DNI ya existe', ContentType.warning);
+      return true;
+    }
+
+    return false; // Si ninguno existe, se puede proceder
+  }
+
+  // Función para buscar los datos por DNI
+  Future<void> _fetchDniData(String dni) async {
+    final data = await ApiService.getdni(dni);
+    if (data != null) {
+      setState(() {
+        dniData = data; // Guardar los datos obtenidos
+      });
+    } else {
+      setState(() {
+        dniData = null; // Limpiar datos si no se encuentran
+      });
+    }
+  }
+
+  // Snackbar para mostrar mensajes
   _buildAwesomeSnackBar(
       BuildContext context, String message, ContentType contentType) {
     final snackBar = SnackBar(
@@ -65,8 +106,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(
-          color: Colors
-              .white, // Cambia el color de la flecha de retroceso a blanco
+          color: Colors.white,
         ),
       ),
       body: Container(
@@ -84,15 +124,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Icono de usuario (avatar)
-                  const CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.black,
-                    child:
-                        Icon(Icons.person_add, size: 50, color: Colors.white),
-                  ),
                   const SizedBox(height: 30),
-                  // Caja central de registro
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -108,9 +140,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     child: Column(
                       children: [
-                        // Campo de Nombre de Usuario
                         _buildUsernameField(),
-                        if (!_isUsernameValid) // Mostrar advertencia si el nombre de usuario no es válido
+                        if (!_isUsernameValid)
                           const Padding(
                             padding: EdgeInsets.only(top: 8.0),
                             child: Text(
@@ -119,7 +150,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                           ),
                         const SizedBox(height: 20),
-                        // Campo de Email
+                        // Nuevo campo de DNI
+                        _buildDniField(),
+                        const SizedBox(height: 20),
+
+                        // Mostrar los datos obtenidos por el servicio
+                        if (dniData != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Text(
+                                  "${dniData?['nombres']}",
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 16),
+                                ),
+                                Text(
+                                  "${dniData?['apellidoPaterno']}",
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 16),
+                                ),
+                                Text(
+                                  "${dniData?['apellidoMaterno']}",
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 20),
+                        // Campo de email y contraseña
                         _buildTextField(
                           label: 'Email',
                           icon: Icons.email,
@@ -130,7 +191,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           },
                         ),
                         const SizedBox(height: 20),
-                        // Campo de Password con barra de fortaleza personalizada
                         _buildPasswordField(
                           label: 'Contraseña',
                           icon: Icons.lock,
@@ -209,42 +269,66 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           isPasswordVisible: _isConfirmPasswordVisible,
                         ),
                         const SizedBox(height: 20),
-                        // Botón de Registro
-                        _buildButton(
-                          text: 'Registrar',
-                          onPressed: () async {
-                            setState(() {
-                              _isUsernameValid = _validateUsername(username);
-                            });
+                         // Mostrar CircleIndicator mientras se carga
+                        if (_isLoading)
+                          const CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ), // Mostrar indicador de carga
+                        
+                        if (!_isLoading) // Si no está cargando, muestra el botón de registro
+                          _buildButton(
+                            text: 'Registrar',
+                            onPressed: () async {
+                              setState(() {
+                                _isUsernameValid = _validateUsername(username);
+                                _isLoading = true; // Activar indicador de carga
+                              });
 
-                            if (email.isEmpty ||
-                                password.isEmpty ||
-                                confirmPassword.isEmpty ||
-                                username.isEmpty ||
-                                !_isUsernameValid) {
-                              _buildAwesomeSnackBar(
+                              if (email.isEmpty ||
+                                  password.isEmpty ||
+                                  confirmPassword.isEmpty ||
+                                  username.isEmpty ||
+                                  !_isUsernameValid) {
+                                _buildAwesomeSnackBar(
+                                    context,
+                                    'Por favor, completa todos los campos.',
+                                    ContentType.failure);
+                                setState(() {
+                                  _isLoading = false; // Desactivar indicador de carga
+                                });
+                                return;
+                              }
+
+                              if (password != confirmPassword) {
+                                _buildAwesomeSnackBar(
+                                    context,
+                                    'Las contraseñas no coinciden.',
+                                    ContentType.warning);
+                                setState(() {
+                                  _isLoading = false; // Desactivar indicador de carga
+                                });
+                                return;
+                              }
+
+                              if (!_validatePassword(password)) {
+                                _buildAwesomeSnackBar(
                                   context,
-                                  'Por favor, completa todos los campos.',
-                                  ContentType.failure);
-                              return;
-                            }
+                                  'La contraseña debe tener al menos 6 caracteres, una mayúscula, un número y un carácter especial.',
+                                  ContentType.warning,
+                                );
+                                setState(() {
+                                  _isLoading = false; // Desactivar indicador de carga
+                                });
+                                return;
+                              }
 
-                            if (password != confirmPassword) {
-                              _buildAwesomeSnackBar(
-                                  context,
-                                  'Las contraseñas no coinciden.',
-                                  ContentType.warning);
-                              return;
-                            }
-
-                            if (!_validatePassword(password)) {
-                              _buildAwesomeSnackBar(
-                                context,
-                                'La contraseña debe tener al menos 6 caracteres, una mayúscula, un número y un carácter especial.',
-                                ContentType.warning,
-                              );
-                              return;
-                            }
+                              bool isTaken = await _isUsernameOrDniTaken(username, dni);
+                              if (isTaken) {
+                                setState(() {
+                                  _isLoading = false; // Desactivar indicador de carga
+                                });
+                                return;
+                              }
 
                             try {
                               UserCredential userCredential =
@@ -261,8 +345,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   .set({
                                 'username': username,
                                 'email': email.trim(),
-                                'password': password,
-                                'passwordHash': passwordHash,
+                                'dni': dni,
+                                'nombres': dniData, // Guardar nombres obtenidos del DNI
                                 'createdAt': Timestamp.now(),
                               });
 
@@ -290,14 +374,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Nueva función para el campo de Nombre de Usuario
+  // Campo de Nombre de Usuario
   Widget _buildUsernameField() {
     return TextField(
       onChanged: (value) {
         setState(() {
           username = value;
-          _isUsernameValid = _validateUsername(
-              username); // Actualiza la validación en tiempo real
+          _isUsernameValid = _validateUsername(username);
         });
       },
       style: const TextStyle(color: Colors.white),
@@ -307,6 +390,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
         filled: true,
         fillColor: Colors.white.withOpacity(0.2),
         prefixIcon: const Icon(Icons.person, color: Colors.white),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  // Campo de DNI
+  Widget _buildDniField() {
+    return TextField(
+      onChanged: (value) {
+        setState(() {
+          dni = value;
+        });
+        if (dni.length == 8) {
+          _fetchDniData(
+              dni); // Llamar al servicio cuando el DNI tenga 8 dígitos
+        } else {
+          setState(() {
+            dniData = null; // Limpiar los datos si el DNI es incorrecto
+          });
+        }
+      },
+      style: const TextStyle(color: Colors.white),
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: 'DNI',
+        labelStyle: const TextStyle(color: Colors.white),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.2),
+        prefixIcon: const Icon(Icons.credit_card, color: Colors.white),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: BorderSide.none,
@@ -340,7 +455,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Campo de texto para contraseñas con botón de visibilidad (ojito)
+  // Campo de texto para contraseñas con botón de visibilidad
   Widget _buildPasswordField({
     required String label,
     required IconData icon,
@@ -418,17 +533,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     double strength = 0.0;
 
     if (password.length >= 6) strength += 0.25;
-    if (password.contains(RegExp(r'[A-Z]')))
-      strength += 0.25; // Tiene una letra mayúscula
-    if (password.contains(RegExp(r'[0-9]')))
-      strength += 0.25; // Tiene un número
-    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]')))
-      strength += 0.25; // Tiene un carácter especial
+    if (password.contains(RegExp(r'[A-Z]'))) strength += 0.25;
+    if (password.contains(RegExp(r'[0-9]'))) strength += 0.25;
+    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength += 0.25;
 
     return strength;
   }
 
-  // Función para obtener el texto de fortaleza de la contraseña en español
+    // Función para obtener el texto de fortaleza de la contraseña en español
   String _getPasswordStrengthText(double strength) {
     if (strength < 0.25) {
       return 'Débil';
