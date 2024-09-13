@@ -6,6 +6,8 @@ import 'qr_view.dart';
 import 'recharge_page.dart';
 
 class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
   @override
   _HomePageState createState() => _HomePageState();
 }
@@ -17,7 +19,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _loadUsername(); // Cargar el nombre de usuario almacenado en SharedPreferences
+    _loadUsername(); 
   }
 
 Future<void> _loadUsername() async {
