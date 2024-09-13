@@ -1,4 +1,4 @@
-import 'package:code_projectv1/data/home_page.dart';
+import 'package:code_projectv1/screen/home_page.dart';
 import 'package:code_projectv1/firebase_options.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
