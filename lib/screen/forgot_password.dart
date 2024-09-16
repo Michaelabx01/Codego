@@ -175,7 +175,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
       _showAwesomeSnackBar('Éxito',
-          'Enlace de restablecimiento enviado a $email', ContentType.success);
+          'Enlace de restablecimiento enviado', ContentType.success);
       Navigator.pop(context); // Vuelve a la pantalla de login
     } catch (e) {
       _showAwesomeSnackBar(

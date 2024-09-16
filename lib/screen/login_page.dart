@@ -1,7 +1,8 @@
 import 'package:awesome_snackbar_content/awesome_snackbar_content.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/transition/left_route.dart';
 import '../widgets/transition/right_route.dart';
@@ -16,6 +17,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginPage> {
   final _auth = FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
   late TextEditingController emailController;
   late TextEditingController passwordController;
   bool rememberMe = false;
@@ -67,108 +69,177 @@ class _LoginScreenState extends State<LoginPage> {
   }
 
   // Función para realizar el inicio de sesión
-// Función para realizar el inicio de sesión
-Future<void> _login() async {
-  String emailOrUsername = emailController.text.trim();
-  String password = passwordController.text.trim();
+  Future<void> _login() async {
+    String emailOrUsername = emailController.text.trim();
+    String password = passwordController.text.trim();
 
-  if (emailOrUsername.isEmpty || password.isEmpty) {
-    final snackBar = const SnackBar(
-      elevation: 0,
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: Colors.transparent,
-      content: AwesomeSnackbarContent(
-        title: 'Error',
-        message:
-            'Por favor, ingrese su nombre de usuario/correo electrónico y contraseña',
-        contentType: ContentType.failure,
-      ),
-    );
-    ScaffoldMessenger.of(context).showSnackBar(snackBar);
-    return;
+    if (emailOrUsername.isEmpty || password.isEmpty) {
+      const snackBar = SnackBar(
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        content: AwesomeSnackbarContent(
+          title: 'Error',
+          message:
+              'Por favor, ingrese su nombre de usuario/correo electrónico y contraseña',
+          contentType: ContentType.failure,
+        ),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      String emailToUse = emailOrUsername;
+      String username = emailOrUsername;
+
+      // Verificar si es un nombre de usuario en lugar de un correo electrónico
+      if (!emailOrUsername.contains('@')) {
+        QuerySnapshot userSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .where('username', isEqualTo: emailOrUsername)
+            .get();
+
+        if (userSnapshot.docs.isNotEmpty) {
+          emailToUse = userSnapshot.docs.first['email'];
+          username = userSnapshot.docs.first['username'];
+        } else {
+          throw FirebaseAuthException(
+            code: 'user-not-found',
+            message: 'Nombre de usuario no encontrado',
+          );
+        }
+      }
+
+      // Autenticar con Firebase usando el correo obtenido o el correo ingresado
+      await _auth.signInWithEmailAndPassword(
+        email: emailToUse,
+        password: password,
+      );
+
+      // Obtener el nombre de usuario del Firestore usando el correo
+      QuerySnapshot userSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: emailToUse)
+          .get();
+
+      if (userSnapshot.docs.isNotEmpty) {
+        username = userSnapshot.docs.first['username']; // Obtener el nombre de usuario real
+      }
+
+      // Guardar credenciales según el estado del checkbox
+      _saveOrRemoveUserCredentials();
+
+      // Guardar el nombre de usuario en SharedPreferences si está activado el checkbox
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString('username', username);  // Guardar el nombre de usuario en lugar del correo
+
+      // Navegar a la pantalla de inicio y eliminar todas las rutas anteriores
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const HomePage()),
+        (route) => false, // Eliminar todas las rutas anteriores
+      );
+    } catch (e) {
+      String errorMessage = 'Usuario o contraseña incorrectos';
+
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case 'invalid-email':
+            errorMessage = 'El correo electrónico no es válido';
+            break;
+          case 'user-not-found':
+            errorMessage = 'Usuario no encontrado';
+            break;
+          case 'wrong-password':
+            errorMessage = 'Contraseña incorrecta';
+            break;
+          default:
+            errorMessage = 'Error: ${e.message}';
+        }
+      }
+
+      final snackBar = SnackBar(
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        content: AwesomeSnackbarContent(
+          title: 'Error',
+          message: errorMessage,
+          contentType: ContentType.failure,
+        ),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(snackBar);
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
+Future<void> _signInWithGoogle() async {
   setState(() {
     isLoading = true;
   });
 
   try {
-    String emailToUse = emailOrUsername;
-    String username = emailOrUsername;
+    // Primero, cerrar sesión en la cuenta de Google actual
+    await _googleSignIn.signOut();
 
-    // Verificar si es un nombre de usuario en lugar de un correo electrónico
-    if (!emailOrUsername.contains('@')) {
-      QuerySnapshot userSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('username', isEqualTo: emailOrUsername)
-          .get();
-
-      if (userSnapshot.docs.isNotEmpty) {
-        emailToUse = userSnapshot.docs.first['email'];
-        username = userSnapshot.docs.first['username'];
-      } else {
-        throw FirebaseAuthException(
-          code: 'user-not-found',
-          message: 'Nombre de usuario no encontrado',
-        );
-      }
+    // Luego, iniciar sesión con Google
+    final GoogleUser = await _googleSignIn.signIn();
+    if (GoogleUser == null) {
+      // El usuario canceló el inicio de sesión
+      setState(() {
+        isLoading = false;
+      });
+      return;
     }
 
-    // Autenticar con Firebase usando el correo obtenido o el correo ingresado
-    await _auth.signInWithEmailAndPassword(
-      email: emailToUse,
-      password: password,
+    final GoogleAuth = await GoogleUser.authentication;
+
+    final credential = GoogleAuthProvider.credential(
+      accessToken: GoogleAuth.accessToken,
+      idToken: GoogleAuth.idToken,
     );
+
+    await _auth.signInWithCredential(credential);
 
     // Obtener el nombre de usuario del Firestore usando el correo
     QuerySnapshot userSnapshot = await FirebaseFirestore.instance
         .collection('users')
-        .where('email', isEqualTo: emailToUse)
+        .where('email', isEqualTo: GoogleUser.email)
         .get();
 
+    String username = GoogleUser.displayName?.split(' ').first ?? GoogleUser.email;
+
     if (userSnapshot.docs.isNotEmpty) {
-      username = userSnapshot.docs.first['username']; // Obtener el nombre de usuario real
+      username = userSnapshot.docs.first['username'];
     }
 
-    // Guardar credenciales según el estado del checkbox
-    _saveOrRemoveUserCredentials();
-
-    // Guardar el nombre de usuario en SharedPreferences si está activado el checkbox
+    // Guardar el nombre de usuario en SharedPreferences
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('username', username);  // Guardar el nombre de usuario en lugar del correo
+    await prefs.setString('username', username);
 
     // Navegar a la pantalla de inicio y eliminar todas las rutas anteriores
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (context) => HomePage()),
+      MaterialPageRoute(builder: (context) => const HomePage()),
       (route) => false, // Eliminar todas las rutas anteriores
     );
   } catch (e) {
-    String errorMessage = 'Usuario o contraseña incorrectos';
-
-    if (e is FirebaseAuthException) {
-      switch (e.code) {
-        case 'invalid-email':
-          errorMessage = 'El correo electrónico no es válido';
-          break;
-        case 'user-not-found':
-          errorMessage = 'Usuario no encontrado';
-          break;
-        case 'wrong-password':
-          errorMessage = 'Contraseña incorrecta';
-          break;
-        default:
-          errorMessage = 'Error: ${e.message}';
-      }
-    }
-
-    final snackBar = SnackBar(
+    const snackBar = SnackBar(
       elevation: 0,
       behavior: SnackBarBehavior.floating,
       backgroundColor: Colors.transparent,
       content: AwesomeSnackbarContent(
         title: 'Error',
-        message: errorMessage,
+        message: 'Error al iniciar sesión con Google. Inténtalo de nuevo.',
         contentType: ContentType.failure,
       ),
     );
@@ -180,6 +251,7 @@ Future<void> _login() async {
     });
   }
 }
+
 
 
   @override
@@ -250,60 +322,14 @@ Future<void> _login() async {
                         controller: passwordController,
                       ),
                       const SizedBox(height: 20),
-                      // Row(
-                      //   mainAxisAlignment: MainAxisAlignment.center,
-                      //   children: [
-                      //     // Row(
-                      //     //   children: [
-                      //     //     Checkbox(
-                      //     //       value: rememberMe,
-                      //     //       onChanged: (value) {
-                      //     //         setState(() {
-                      //     //           rememberMe = value!;
-                      //     //           _saveOrRemoveUserCredentials();
-                      //     //         });
-                      //     //       },
-                      //     //       activeColor: Colors.white,
-                      //     //       checkColor: Colors.black,
-                      //     //     ),
-                      //     //     const Text(
-                      //     //       'Recordar',
-                      //     //       style: TextStyle(color: Colors.white),
-                      //     //     ),
-                      //     //   ],
-                      //     // ),
-                      //     TextButton(
-                      //       onPressed: () {
-                      //         Navigator.push(
-                      //           context,
-                      //           MaterialPageRoute(
-                      //               builder: (context) =>
-                      //                   ForgotPasswordScreen()),
-                      //         );
-                      //       },
-                      //       child: const Text(
-                      //         '¿Olvidaste tu contraseña?',
-                      //         style: TextStyle(color: Colors.white),
-                      //       ),
-                      //     ),
-                      //   ],
-                      // ),
-                      const SizedBox(height: 20),
                       _buildLoginButton(
                         text: isLoading ? 'Espere...' : 'Iniciar Sesión',
                         onPressed: isLoading ? null : _login,
                       ),
-                      // const SizedBox(height: 20),
-                      // _buildRegisterButton(
-                      //   text: 'Registrarse',
-                      //   onPressed: () {
-                      //     Navigator.push(
-                      //       context,
-                      //       MaterialPageRoute(
-                      //           builder: (context) => const RegisterScreen()),
-                      //     );
-                      //   },
-                      // ),
+                      const SizedBox(
+                        height: 15,
+                      ),
+                      _buildGoogleSignInButton(),
                       const SizedBox(
                         height: 15,
                       ),
@@ -312,11 +338,11 @@ Future<void> _login() async {
                         children: [
                           Expanded(
                             child: GestureDetector(
-                             onTap: () {
-                              FocusManager.instance.primaryFocus!.unfocus();
+                              onTap: () {
+                                FocusManager.instance.primaryFocus!.unfocus();
                                 Navigator.push(context,
                                     RightRoute(page: ForgotPasswordScreen()));
-                            },
+                              },
                               child: SizedBox(
                                 width: MediaQuery.of(context).size.width * 0.45,
                                 child: const Column(
@@ -488,24 +514,21 @@ Future<void> _login() async {
     );
   }
 
-  Widget _buildRegisterButton({
-    required String text,
-    required VoidCallback onPressed,
-  }) {
+  Widget _buildGoogleSignInButton() {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: onPressed,
+        onPressed: isLoading ? null : _signInWithGoogle,
         style: ElevatedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 15),
-          backgroundColor: Colors.blue,
+          backgroundColor: Colors.red,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
         ),
-        child: Text(
-          text,
-          style: const TextStyle(
+        child: const Text(
+          'Iniciar sesión con Google',
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             letterSpacing: 1.5,

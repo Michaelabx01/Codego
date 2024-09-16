@@ -29,22 +29,32 @@ class _UserProfilePageState extends State<UserProfilePage> {
     // Obtener el ID del usuario actualmente autenticado
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      // Consultar Firestore para obtener los datos del usuario
-      DocumentSnapshot userSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      // Si los datos existen, acceder correctamente al subcampo 'nombres'
-      if (userSnapshot.exists) {
-        final userData = userSnapshot.data() as Map<String, dynamic>;
-        final nombresData = userData['nombres'] as Map<String, dynamic>;
-
+      if (user.providerData.any((provider) => provider.providerId == 'google.com')) {
+        // El usuario inició sesión con Google
+        // Puedes asumir que el nombre de usuario ya se pasó a esta página
         setState(() {
-          nombres = nombresData['nombres']; // Nombres del usuario
-          apellidoPaterno = nombresData['apellidoPaterno']; // Apellido paterno
-          apellidoMaterno = nombresData['apellidoMaterno']; // Apellido materno
+          nombres = user.displayName;
+          apellidoPaterno = '';
+          apellidoMaterno = '';
         });
+      } else {
+        // Consultar Firestore para obtener los datos del usuario
+        DocumentSnapshot userSnapshot = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        // Si los datos existen, acceder correctamente al subcampo 'nombres'
+        if (userSnapshot.exists) {
+          final userData = userSnapshot.data() as Map<String, dynamic>;
+          final nombresData = userData['nombres'] as Map<String, dynamic>;
+
+          setState(() {
+            nombres = nombresData['nombres']; // Nombres del usuario
+            apellidoPaterno = nombresData['apellidoPaterno']; // Apellido paterno
+            apellidoMaterno = nombresData['apellidoMaterno']; // Apellido materno
+          });
+        }
       }
     }
   }

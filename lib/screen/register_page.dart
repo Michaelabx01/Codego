@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:awesome_snackbar_content/awesome_snackbar_content.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../service/dni_serivce.dart';
 
@@ -45,20 +47,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   // Verificar si el nombre de usuario o DNI ya existen en Firestore
   Future<bool> _isUsernameOrDniTaken(String username, String dni) async {
-    // Verificar nombre de usuario
     final usernameSnapshot = await FirebaseFirestore.instance
         .collection('users')
         .where('username', isEqualTo: username)
         .get();
 
-    // Verificar DNI
     final dniSnapshot = await FirebaseFirestore.instance
         .collection('users')
         .where('dni', isEqualTo: dni)
         .get();
 
     if (usernameSnapshot.docs.isNotEmpty) {
-      _buildAwesomeSnackBar(context, 'El nombre de usuario ya existe', ContentType.warning);
+      _buildAwesomeSnackBar(
+          context, 'El nombre de usuario ya existe', ContentType.warning);
       return true;
     }
 
@@ -67,7 +68,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return true;
     }
 
-    return false; // Si ninguno existe, se puede proceder
+    return false;
   }
 
   // Función para buscar los datos por DNI
@@ -75,11 +76,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final data = await ApiService.getdni(dni);
     if (data != null) {
       setState(() {
-        dniData = data; // Guardar los datos obtenidos
+        dniData = data;
       });
     } else {
       setState(() {
-        dniData = null; // Limpiar datos si no se encuentran
+        dniData = null;
       });
     }
   }
@@ -99,6 +100,70 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
     ScaffoldMessenger.of(context).showSnackBar(snackBar);
   }
+
+Future<void> _signInWithGoogle() async {
+  try {
+    // Cerrar sesión en Google Sign-In antes de iniciar sesión con una nueva cuenta
+    await GoogleSignIn().signOut();
+
+    final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+
+    if (googleUser == null) {
+      return; // El usuario canceló el inicio de sesión
+    }
+
+    final GoogleSignInAuthentication googleAuth =
+        await googleUser.authentication;
+
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    final userCredential =
+        await FirebaseAuth.instance.signInWithCredential(credential);
+
+    final user = userCredential.user;
+    if (user != null) {
+      final userDoc =
+          FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+      final docSnapshot = await userDoc.get();
+      if (!docSnapshot.exists) {
+        // Almacenar información del usuario en Firestore
+        await userDoc.set({
+          'username': user.displayName ?? 'Usuario', // Nombre de usuario del perfil de Google
+          'email': user.email, // Email del perfil de Google
+          'createdAt': Timestamp.now(), // Fecha y hora de creación
+          'photoURL': user.photoURL, // URL de la foto de perfil (opcional)
+          'provider': 'google', // Identificador del proveedor de autenticación
+        });
+      }
+    }
+
+    _showSnackBar('Inició sesión exitosamente con Google', ContentType.success);
+  } catch (e) {
+    log('Error al iniciar sesión con Google: $e'); // Log the error
+    _showSnackBar('Error al iniciar sesión con Google: $e', ContentType.failure);
+  }
+}
+
+
+void _showSnackBar(String message, ContentType contentType) {
+  final snackBar = SnackBar(
+    elevation: 0,
+    behavior: SnackBarBehavior.floating,
+    backgroundColor: Colors.transparent,
+    content: AwesomeSnackbarContent(
+      title: contentType == ContentType.success ? 'Éxito' : 'Error',
+      message: message,
+      contentType: contentType,
+    ),
+  );
+  ScaffoldMessenger.of(context).showSnackBar(snackBar);
+}
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +189,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 30),
+                  // const SizedBox(height: 30),
+
+                  const SizedBox(height: 20),
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -150,11 +217,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                           ),
                         const SizedBox(height: 20),
-                        // Nuevo campo de DNI
                         _buildDniField(),
                         const SizedBox(height: 20),
-
-                        // Mostrar los datos obtenidos por el servicio
                         if (dniData != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 8.0),
@@ -180,7 +244,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                           ),
                         const SizedBox(height: 20),
-                        // Campo de email y contraseña
                         _buildTextField(
                           label: 'Email',
                           icon: Icons.email,
@@ -200,8 +263,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             setState(() {
                               password = value;
                             });
-                            passNotifier.value = _calculatePasswordStrength(
-                                value); // Calcula la fortaleza
+                            passNotifier.value =
+                                _calculatePasswordStrength(value);
                           },
                           toggleVisibility: () {
                             setState(() {
@@ -211,7 +274,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           isPasswordVisible: _isPasswordVisible,
                         ),
                         const SizedBox(height: 10),
-                        // Barra de progreso personalizada para la fortaleza de la contraseña
                         ValueListenableBuilder<double>(
                           valueListenable: passNotifier,
                           builder: (context, value, child) {
@@ -234,10 +296,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 10),
-                                // Texto que indica la fortaleza de la contraseña
                                 Text(
-                                  _getPasswordStrengthText(
-                                      value), // Obtén el texto en español
+                                  _getPasswordStrengthText(value),
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -249,7 +309,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           },
                         ),
                         const SizedBox(height: 20),
-                        // Campo de Confirmación de Contraseña con ícono de ojito
                         _buildPasswordField(
                           label: 'Confirmar Contraseña',
                           icon: Icons.lock_outline,
@@ -269,19 +328,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           isPasswordVisible: _isConfirmPasswordVisible,
                         ),
                         const SizedBox(height: 20),
-                         // Mostrar CircleIndicator mientras se carga
                         if (_isLoading)
                           const CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ), // Mostrar indicador de carga
-                        
-                        if (!_isLoading) // Si no está cargando, muestra el botón de registro
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        if (!_isLoading)
                           _buildButton(
                             text: 'Registrar',
                             onPressed: () async {
                               setState(() {
                                 _isUsernameValid = _validateUsername(username);
-                                _isLoading = true; // Activar indicador de carga
+                                _isLoading = true;
                               });
 
                               if (email.isEmpty ||
@@ -294,7 +352,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     'Por favor, completa todos los campos.',
                                     ContentType.failure);
                                 setState(() {
-                                  _isLoading = false; // Desactivar indicador de carga
+                                  _isLoading = false;
                                 });
                                 return;
                               }
@@ -305,7 +363,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     'Las contraseñas no coinciden.',
                                     ContentType.warning);
                                 setState(() {
-                                  _isLoading = false; // Desactivar indicador de carga
+                                  _isLoading = false;
                                 });
                                 return;
                               }
@@ -317,53 +375,69 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   ContentType.warning,
                                 );
                                 setState(() {
-                                  _isLoading = false; // Desactivar indicador de carga
+                                  _isLoading = false;
                                 });
                                 return;
                               }
 
-                              bool isTaken = await _isUsernameOrDniTaken(username, dni);
+                              bool isTaken =
+                                  await _isUsernameOrDniTaken(username, dni);
                               if (isTaken) {
                                 setState(() {
-                                  _isLoading = false; // Desactivar indicador de carga
+                                  _isLoading = false;
                                 });
                                 return;
                               }
 
-                            try {
-                              UserCredential userCredential =
-                                  await _auth.createUserWithEmailAndPassword(
-                                email: email.trim(),
-                                password: password.trim(),
-                              );
+                              try {
+                                UserCredential userCredential =
+                                    await _auth.createUserWithEmailAndPassword(
+                                  email: email.trim(),
+                                  password: password.trim(),
+                                );
 
-                              String passwordHash = hashPassword(password);
+                                String passwordHash = hashPassword(password);
 
-                              await FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(userCredential.user?.uid)
-                                  .set({
-                                'username': username,
-                                'email': email.trim(),
-                                'dni': dni,
-                                'nombres': dniData, // Guardar nombres obtenidos del DNI
-                                'createdAt': Timestamp.now(),
-                                'password': password,
-                                'passwordHash': passwordHash,
-                              });
+                                await FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(userCredential.user?.uid)
+                                    .set({
+                                  'username': username,
+                                  'email': email.trim(),
+                                  'dni': dni,
+                                  'nombres': dniData,
+                                  'createdAt': Timestamp.now(),
+                                  'password': password,
+                                  'passwordHash': passwordHash,
+                                });
 
-                              _buildAwesomeSnackBar(context, 'Registro exitoso',
-                                  ContentType.success);
+                                _buildAwesomeSnackBar(context,
+                                    'Registro exitoso', ContentType.success);
 
-                              Navigator.pop(context);
-                            } catch (e) {
-                              _buildAwesomeSnackBar(
-                                  context,
-                                  'Error: ${e.toString()}',
-                                  ContentType.failure);
-                            }
-                          },
-                        )
+                                Navigator.pop(context);
+                              } catch (e) {
+                                _buildAwesomeSnackBar(
+                                    context,
+                                    'Error: ${e.toString()}',
+                                    ContentType.failure);
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.black,
+                            backgroundColor: Colors.white,
+                             minimumSize: const Size(400, 50),
+                          ),
+                          icon: Image.asset(
+                            'assets/logo_google.png',
+                            height: 30,
+                            width: 30,
+                          ),
+                          label: const Text('Regístrate con Google', style: TextStyle(fontSize: 20),),
+                          onPressed: _signInWithGoogle,
+                        ),
                       ],
                     ),
                   ),
@@ -376,7 +450,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Campo de Nombre de Usuario
   Widget _buildUsernameField() {
     return TextField(
       onChanged: (value) {
@@ -400,7 +473,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Campo de DNI
   Widget _buildDniField() {
     return TextField(
       onChanged: (value) {
@@ -408,11 +480,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           dni = value;
         });
         if (dni.length == 8) {
-          _fetchDniData(
-              dni); // Llamar al servicio cuando el DNI tenga 8 dígitos
+          _fetchDniData(dni);
         } else {
           setState(() {
-            dniData = null; // Limpiar los datos si el DNI es incorrecto
+            dniData = null;
           });
         }
       },
@@ -432,7 +503,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Campo de texto reutilizable
   Widget _buildTextField({
     required String label,
     required IconData icon,
@@ -457,7 +527,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Campo de texto para contraseñas con botón de visibilidad
   Widget _buildPasswordField({
     required String label,
     required IconData icon,
@@ -494,7 +563,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Botón de registro
   Widget _buildButton({
     required String text,
     required VoidCallback onPressed,
@@ -530,7 +598,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Función para calcular la fortaleza de la contraseña
   double _calculatePasswordStrength(String password) {
     double strength = 0.0;
 
@@ -542,7 +609,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return strength;
   }
 
-    // Función para obtener el texto de fortaleza de la contraseña en español
   String _getPasswordStrengthText(double strength) {
     if (strength < 0.25) {
       return 'Débil';
@@ -555,7 +621,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // Función para validar la contraseña con reglas estrictas
   bool _validatePassword(String password) {
     final hasUppercase = password.contains(RegExp(r'[A-Z]'));
     final hasDigits = password.contains(RegExp(r'[0-9]'));
