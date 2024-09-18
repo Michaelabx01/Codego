@@ -75,98 +75,102 @@ class _UserProfilePageState extends State<UserProfilePage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+ @override
+Widget build(BuildContext context) {
+  final size = MediaQuery.of(context).size;
+  final user = FirebaseAuth.instance.currentUser;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(
-          color: Colors.white,
-        ),
+  return Scaffold(
+    appBar: AppBar(
+      backgroundColor: Colors.black,
+      iconTheme: const IconThemeData(
+        color: Colors.white,
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const SizedBox(height: 50),
-            CardContainer(
-              backgroundColor: Colors.white,
-              width: size.width * 0.40,
-              height: size.width * 0.40,
-              child: Center(
-                child: Icon(
-                  Icons.perm_identity,
-                  size: (size.width * 0.32) > 100 ? 100 : 50,
-                ),
-              ),
+    ),
+    body: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const SizedBox(height: 50),
+          CardContainer(
+            backgroundColor: Colors.white,
+            width: size.width * 0.40,
+            height: size.width * 0.40,
+            child: Center(
+              child: user != null && user.providerData.any((provider) => provider.providerId == 'google.com') && user.photoURL != null
+                  ? CircleAvatar(
+                      radius: (size.width * 0.16) > 50 ? 50 : 25, // Ajusta el tamaño
+                      backgroundImage: NetworkImage(user.photoURL!), // Muestra la foto de perfil
+                    )
+                  : Icon(
+                      Icons.perm_identity,
+                      size: (size.width * 0.32) > 100 ? 100 : 50,
+                    ),
             ),
-            const SizedBox(height: 20),
-            const Text(
-              'Username',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Username',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
             ),
-            // Mostrar el nombre de usuario
-            Text(
-              widget.username,
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
+          ),
+          Text(
+            widget.username,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
             ),
-            const SizedBox(height: 20),
+          ),
+          const SizedBox(height: 20),
 
-            // Mostrar nombres y apellidos si están disponibles
-            const Text(
-              'Nombre Completo',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey,
-              ),
+          const Text(
+            'Nombre Completo',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
             ),
-            Text(
-              '${nombres ?? 'Cargando...'} ${apellidoPaterno ?? ''} ${apellidoMaterno ?? ''}', // Mostrar nombres y apellidos
-              style: const TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-              textAlign: TextAlign.center,
+          ),
+          Text(
+            '${nombres ?? 'Cargando...'} ${apellidoPaterno ?? ''} ${apellidoMaterno ?? ''}', // Mostrar nombres y apellidos
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
             ),
+            textAlign: TextAlign.center,
+          ),
+          
+          const SizedBox(height: 40),
 
-            const SizedBox(height: 40),
-
-            // Botón de cerrar sesión
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  _signOut(context);
-                },
-                icon: const Icon(
-                  Icons.exit_to_app_outlined,
-                  size: 18,
-                  color: Colors.black,
-                ),
-                label: const Text(
-                  "Cerrar sesión",
-                  style: TextStyle(fontSize: 18, color: Colors.black),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.black),
-                ),
+          // Botón de cerrar sesión
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                _signOut(context);
+              },
+              icon: const Icon(
+                Icons.exit_to_app_outlined,
+                size: 18,
+                color: Colors.black,
+              ),
+              label: const Text(
+                "Cerrar sesión",
+                style: TextStyle(fontSize: 18, color: Colors.black),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.black),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

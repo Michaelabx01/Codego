@@ -101,69 +101,200 @@ class _RegisterScreenState extends State<RegisterScreen> {
     ScaffoldMessenger.of(context).showSnackBar(snackBar);
   }
 
-Future<void> _signInWithGoogle() async {
-  try {
-    // Cerrar sesión en Google Sign-In antes de iniciar sesión con una nueva cuenta
-    await GoogleSignIn().signOut();
+  // Función de registro con correo de verificación
+  Future<void> _registerWithEmailAndPassword() async {
+    try {
+      UserCredential userCredential =
+          await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
 
-    final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      // Enviar correo de verificación
+      if (userCredential.user != null && !userCredential.user!.emailVerified) {
+        await userCredential.user!.sendEmailVerification();
 
-    if (googleUser == null) {
-      return; // El usuario canceló el inicio de sesión
-    }
+        // Mostrar el diálogo después de enviar el correo de verificación
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20.0),
+              ),
+              backgroundColor: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    // Título estilizado
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Verificación de correo electrónico',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                            overflow: TextOverflow.visible,
+                          ),
+                        ),
+                        Icon(
+                          Icons.email_outlined,
+                          color: Colors.blueAccent,
+                          size: 30,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
 
-    final GoogleSignInAuthentication googleAuth =
-        await googleUser.authentication;
+                    // Contenido del diálogo
+                    const Text(
+                      'Para completar tu registro, revisa la bandeja de entrada o carpeta de spam de tu correo electrónico. Solo podrás iniciar sesión después de verificar tu cuenta.',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black54,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 30),
 
-    final credential = GoogleAuthProvider.credential(
-      accessToken: googleAuth.accessToken,
-      idToken: googleAuth.idToken,
-    );
-
-    final userCredential =
-        await FirebaseAuth.instance.signInWithCredential(credential);
-
-    final user = userCredential.user;
-    if (user != null) {
-      final userDoc =
-          FirebaseFirestore.instance.collection('users').doc(user.uid);
-
-      final docSnapshot = await userDoc.get();
-      if (!docSnapshot.exists) {
-        // Almacenar información del usuario en Firestore
-        await userDoc.set({
-          'username': user.displayName ?? 'Usuario', // Nombre de usuario del perfil de Google
-          'email': user.email, // Email del perfil de Google
-          'createdAt': Timestamp.now(), // Fecha y hora de creación
-          'photoURL': user.photoURL, // URL de la foto de perfil (opcional)
-          'provider': 'google', // Identificador del proveedor de autenticación
-        });
+                    // Botón de acción personalizado
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(); // Cierra el diálogo
+                          Navigator.pop(
+                              context); // Regresa a la pantalla anterior
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 30,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10.0),
+                          ),
+                        ),
+                        child: const Text(
+                          'Aceptar',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
       }
+
+      // Guardar información del usuario en Firestore
+      String passwordHash = hashPassword(password);
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user?.uid)
+          .set({
+        'username': username,
+        'email': email.trim(),
+        'dni': dni,
+        'nombres': dniData,
+        'createdAt': Timestamp.now(),
+        'password': password,
+        'passwordHash': passwordHash,
+      });
+
+      _buildAwesomeSnackBar(context, 'Registro exitoso', ContentType.success);
+    } catch (e) {
+      _buildAwesomeSnackBar(
+          context, 'Error: ${e.toString()}', ContentType.failure);
+    } finally {
+      setState(() {
+        _isLoading = false; // Dejar de mostrar el indicador de carga
+      });
     }
-
-    _showSnackBar('Inició sesión exitosamente con Google', ContentType.success);
-  } catch (e) {
-    log('Error al iniciar sesión con Google: $e'); // Log the error
-    _showSnackBar('Error al iniciar sesión con Google: $e', ContentType.failure);
   }
-}
 
+  // Función para iniciar sesión con Google y verificar el correo
+  Future<void> _signInWithGoogle() async {
+    try {
+      await GoogleSignIn().signOut();
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
 
-void _showSnackBar(String message, ContentType contentType) {
-  final snackBar = SnackBar(
-    elevation: 0,
-    behavior: SnackBarBehavior.floating,
-    backgroundColor: Colors.transparent,
-    content: AwesomeSnackbarContent(
-      title: contentType == ContentType.success ? 'Éxito' : 'Error',
-      message: message,
-      contentType: contentType,
-    ),
-  );
-  ScaffoldMessenger.of(context).showSnackBar(snackBar);
-}
+      if (googleUser == null) {
+        return; // El usuario canceló el inicio de sesión
+      }
 
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
 
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
+
+      if (user != null) {
+        if (!user.emailVerified) {
+          await user.sendEmailVerification();
+          _showSnackBar('Verifica tu correo para completar el registro.',
+              ContentType.warning);
+          await FirebaseAuth.instance
+              .signOut(); // Cerrar sesión hasta que verifique
+          return;
+        }
+
+        final userDoc =
+            FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final docSnapshot = await userDoc.get();
+
+        if (!docSnapshot.exists) {
+          await userDoc.set({
+            'username': user.displayName ?? 'Usuario',
+            'email': user.email,
+            'createdAt': Timestamp.now(),
+            'photoURL': user.photoURL,
+            'provider': 'google',
+          });
+        }
+      }
+
+      _showSnackBar(
+          'Inició sesión exitosamente con Google', ContentType.success);
+    } catch (e) {
+      log('Error al iniciar sesión con Google: $e');
+      _showSnackBar(
+          'Error al iniciar sesión con Google: $e', ContentType.failure);
+    }
+  }
+
+  void _showSnackBar(String message, ContentType contentType) {
+    final snackBar = SnackBar(
+      elevation: 0,
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: Colors.transparent,
+      content: AwesomeSnackbarContent(
+        title: contentType == ContentType.success ? 'Éxito' : 'Error',
+        message: message,
+        contentType: contentType,
+      ),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(snackBar);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -189,8 +320,6 @@ void _showSnackBar(String message, ContentType contentType) {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // const SizedBox(height: 30),
-
                   const SizedBox(height: 20),
                   Container(
                     padding: const EdgeInsets.all(20),
@@ -389,53 +518,25 @@ void _showSnackBar(String message, ContentType contentType) {
                                 return;
                               }
 
-                              try {
-                                UserCredential userCredential =
-                                    await _auth.createUserWithEmailAndPassword(
-                                  email: email.trim(),
-                                  password: password.trim(),
-                                );
-
-                                String passwordHash = hashPassword(password);
-
-                                await FirebaseFirestore.instance
-                                    .collection('users')
-                                    .doc(userCredential.user?.uid)
-                                    .set({
-                                  'username': username,
-                                  'email': email.trim(),
-                                  'dni': dni,
-                                  'nombres': dniData,
-                                  'createdAt': Timestamp.now(),
-                                  'password': password,
-                                  'passwordHash': passwordHash,
-                                });
-
-                                _buildAwesomeSnackBar(context,
-                                    'Registro exitoso', ContentType.success);
-
-                                Navigator.pop(context);
-                              } catch (e) {
-                                _buildAwesomeSnackBar(
-                                    context,
-                                    'Error: ${e.toString()}',
-                                    ContentType.failure);
-                              }
+                              _registerWithEmailAndPassword();
                             },
                           ),
-                          const SizedBox(height: 20),
+                        const SizedBox(height: 20),
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
                             foregroundColor: Colors.black,
                             backgroundColor: Colors.white,
-                             minimumSize: const Size(400, 50),
+                            minimumSize: const Size(400, 50),
                           ),
                           icon: Image.asset(
                             'assets/logo_google.png',
                             height: 30,
                             width: 30,
                           ),
-                          label: const Text('Regístrate con Google', style: TextStyle(fontSize: 20),),
+                          label: const Text(
+                            'Regístrate con Google',
+                            style: TextStyle(fontSize: 20),
+                          ),
                           onPressed: _signInWithGoogle,
                         ),
                       ],

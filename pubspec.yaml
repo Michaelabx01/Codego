@@ -20,6 +20,7 @@ dependencies:
   awesome_snackbar_content: ^0.1.4
   crypto: ^3.0.5
   flutter_launcher_icons: ^0.13.1
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
